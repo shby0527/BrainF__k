@@ -1,0 +1,8 @@
+build/
+*.o
+*.obj
+bf
+config.h
+.cache/
+.vscode/
+
