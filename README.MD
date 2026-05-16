@@ -7,11 +7,13 @@ cmake, gcc/clang, make
 # quick start
 
 ```bash
-make build
+mkdir -p build
 cd build
 cmake .. && make
 ```
+Run:
+```bash
 ./bf ../test/bfs/hello.bf
-
+```
 
 JUST FOR FUN
