@@ -79,8 +79,8 @@ void run()
 
 int main(int argc, char** args)
 {
-	// printf("version is %d.%d \n\n", BF_VERSION_MAJOR, BF_VERSION_MINOR);
 	if (argc <= 1) {
+	    printf("version is %d.%d \n\n", BF_VERSION_MAJOR, BF_VERSION_MINOR);
 		printf("bf filename if is - read from stdin \n");
 		return 1;
 	}
