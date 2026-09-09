@@ -1,23 +1,26 @@
 #ifndef BF_LINK_H
 #define BF_LINK_H
+#include <stddef.h>
 
-typedef struct _bf_link_ {
-	unsigned char data;
-	struct _bf_link_* prev;
-	struct _bf_link_* next;
-} BFLINK;
+typedef struct BFMemoryNode{
+	struct{
+		struct BFMemoryNode *prev;
+		struct BFMemoryNode *next;
+	} ;
+	size_t size;
+	unsigned char memory[];
+} BFMemoryNode;
 
+typedef struct BFMemoryContext{
+	BFMemoryNode *current;
+	size_t offset;
+	long long total_offset;
+} BFMemoryContext;
 
-BFLINK* init_link();
-
-
-void destory_link(BFLINK*);
-
-
-BFLINK* move_to_next(BFLINK*);
-
-
-BFLINK* move_to_prev(BFLINK*);
-
-
+BFMemoryContext *bf_memory_create();
+void bf_memory_destroy(BFMemoryContext *context);
+unsigned char get_current_data(BFMemoryContext *context);
+void set_current_data(BFMemoryContext *context, unsigned char data);
+void move_previous(BFMemoryContext *context);
+void move_next(BFMemoryContext *context);
 #endif

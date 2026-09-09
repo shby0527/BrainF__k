@@ -1,23 +1,17 @@
 #ifndef _BF_STACK_H
 #define _BF_STACK_H
 
-typedef struct _bf_stack_ {
-	int date;
-	struct _bf_stack_* next;
-} BFSTACK;
+#include <stddef.h>
 
+typedef struct BFStackContext {
+	size_t offset;
+	size_t size;
+	size_t addr[];
+} BFStackContext;
 
-BFSTACK* init_stack();
-
-
-void push_stack(BFSTACK**, int);
-
-
-int get_top(BFSTACK**);
-
-
-int pop_stack(BFSTACK**);
-
-
-void destory_stack(BFSTACK**);
+BFStackContext *bf_stack_create(size_t size);
+void bf_stack_destroy(BFStackContext *stack);
+void push(BFStackContext *stack, size_t addr);
+size_t pop(BFStackContext *stack);
+size_t peek(BFStackContext *stack);
 #endif

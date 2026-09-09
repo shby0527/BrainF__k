@@ -1,64 +1,58 @@
-#include <stdlib.h>
-#include <string.h>
 #include "bfstack.h"
+#include <memory.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-
-
-BFSTACK* init_stack()
-{
-	BFSTACK* rtv = (BFSTACK*)malloc(sizeof(BFSTACK));
-	memset(rtv, 0, sizeof(BFSTACK));
-	return rtv;
+BFStackContext *bf_stack_create(size_t size) {
+  BFStackContext *stack =
+      (BFStackContext *)malloc(sizeof(BFStackContext) + size * sizeof(size_t));
+  if (!stack) {
+    return NULL;
+  }
+  stack->offset = 0;
+  stack->size = size;
+  memset(stack->addr, 0, size * sizeof(size_t));
+  return stack;
 }
 
-
-
-void push_stack(BFSTACK** node, int date) 
-{
-	if (node == NULL || *node == NULL)
-		return;
-	BFSTACK* param = *node;
-	BFSTACK* top = (BFSTACK*)malloc(sizeof(BFSTACK));
-	memset(top, 0, sizeof(BFSTACK));
-	top->date = date;
-	top->next = param;
-	*node = top;
-	return;
+void bf_stack_destroy(BFStackContext *stack) {
+  if (stack) {
+    free(stack);
+  }
 }
 
-
-int get_top(BFSTACK** node)
-{
-	if (node == NULL || *node == NULL)
-		return 0;
-	return (*node)->date;
+void push(BFStackContext *stack, size_t addr) {
+  if (!stack) {
+    fprintf(stderr, "Error: Stack is NULL\n");
+    return;
+  }
+  if (stack->offset < stack->size) {
+    stack->addr[stack->offset++] = addr;
+    return;
+  }
+  fprintf(stderr, "Error: Stack overflow\n");
 }
 
-
-int pop_stack(BFSTACK** node)
-{
-	if (node == NULL || *node == NULL)
-		return 0;
-	BFSTACK* param = *node;
-	if (param->next == NULL) {
-		// already in stack buttom
-		return 0;
-	}
-	int date = param->date;
-	*node = param->next;
-	free(param);
-	return date;
+size_t pop(BFStackContext *stack) {
+  if (!stack) {
+    fprintf(stderr, "Error: Stack is NULL\n");
+    return 0;
+  }
+  if (stack->offset > 0) {
+    return stack->addr[--stack->offset];
+  }
+  fprintf(stderr, "Error: Stack underflow\n");
+  return 0;
 }
 
-
-void destory_stack(BFSTACK** node)
-{
-	if (node == NULL || *node == NULL)
-		return;
-	BFSTACK* param = *node; // 一定是顶
-	while(param->next != NULL) {
-		pop_stack(&param);
-	}
-	free(param);
-	return;
+size_t peek(BFStackContext *stack) {
+  if (!stack) {
+    fprintf(stderr, "Error: Stack is NULL\n");
+    return 0;
+  }
+  if (stack->offset > 0) {
+    return stack->addr[stack->offset - 1];
+  }
+  fprintf(stderr, "Error: Stack underflow\n");
+  return 0;
 }

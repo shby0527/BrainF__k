@@ -1,103 +1,104 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include "config.h"
 #include "bflink.h"
 #include "bfstack.h"
-#include <complex.h>
+#include "config.h"
+#include <fcntl.h>
+#include <memory.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-char* bf_source = NULL;
+int main(int argc, char *argv[]) {
+  if (argc < 2) {
+    fprintf(stderr, "bf version %d.%d Usage: %s <filename>\n", BF_VERSION_MAJOR, BF_VERSION_MINOR, argv[0]);
+    return EXIT_FAILURE;
+  }
 
-BFLINK* memory = NULL;
-BFSTACK* stack = NULL;
+  const char *filename = argv[1];
+  int fd = open(filename, O_RDONLY);
 
-char* read_source(int fd)
-{
-	int char_size = 256;
-	bf_source = (char*)malloc(sizeof(char) * char_size);
-	int padded = 0;
-	ssize_t readed = 0;
-	do {
-		if (padded + 255 > char_size ) {
-			char_size = char_size * 2;
-			bf_source = (char*)realloc(bf_source, sizeof(char) * char_size);
-		}
-		readed = read(fd, bf_source + padded, 255);
-		padded += readed;
-	} while(readed >= 255);
-	return bf_source;
-}
-
-void run()
-{
-	memory = init_link();
-	stack = init_stack();
-	int pc = 0;
-	while(*(bf_source + pc) != 0) {
-		char now = *(bf_source + pc);
-		switch(now){
-			case '+':
-				memory->data++;
-				break;
-			case '-':
-				memory->data--;
-				break;
-			case '>':
-				memory = move_to_next(memory); 
-				break;
-			case '<':
-				memory = move_to_prev(memory);
-				break;
-			case ',':
-				memory->data = getchar();
-				break;
-			case '.':
-				putchar(memory->data);
-				break;
-			case '[':
-				push_stack(&stack, pc);
-				break;
-			case ']':
-				if (memory->data == 0) {
-					pop_stack(&stack);
-				} else {
-					pc = get_top(&stack);
-				}
-				break;
-			default:
-				break;
-		}
-		pc++;
-	}
-	destory_link(memory);
-	destory_stack(&stack);
-}
-
-int main(int argc, char** args)
-{
-	if (argc <= 1) {
-	    printf("version is %d.%d \n\n", BF_VERSION_MAJOR, BF_VERSION_MINOR);
-		printf("bf filename if is - read from stdin \n");
-		return 1;
-	}
-	char* filename = args[1];
-	int fd = 0;
-	if (strcmp(filename, "-") == 0) {
-		fd = STDIN_FILENO;
-	} else {
-		fd = open(filename, O_RDONLY);
-	}
-	if (fd < 0) {
-		printf("failure to open file\n");
-		return -4;
-	}
-	read_source(fd);
-	close(fd);
-	run();
-	free(bf_source);
-	return 0;
+  BFMemoryContext *context = bf_memory_create();
+  if (!context) {
+    fprintf(stderr, "Error: Memory context creation failed\n");
+    close(fd);
+    return EXIT_FAILURE;
+  }
+  BFStackContext *stack = bf_stack_create(1024);
+  if (!stack) {
+    fprintf(stderr, "Error: Stack creation failed\n");
+    bf_memory_destroy(context);
+    close(fd);
+    return EXIT_FAILURE;
+  }
+  struct stat st;
+  stat(filename, &st);
+  void *buffer = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  if (buffer == MAP_FAILED) {
+    fprintf(stderr, "Error: Memory mapping failed\n");
+    bf_memory_destroy(context);
+    bf_stack_destroy(stack);
+    close(fd);
+    return EXIT_FAILURE;
+  }
+  const char *code = (const char *)buffer;
+  size_t pc = 0;
+  while (pc < st.st_size) {
+    char command = code[pc];
+    switch (command) {
+    case '>':
+      move_next(context);
+      break;
+    case '<':
+      move_previous(context);
+      break;
+    case '+':
+      set_current_data(context, get_current_data(context) + 1);
+      break;
+    case '-':
+      set_current_data(context, get_current_data(context) - 1);
+      break;
+    case '.':
+      putchar(get_current_data(context));
+      break;
+    case ',':
+      set_current_data(context, getchar());
+      break;
+    case '[':
+      if (get_current_data(context) == 0) {
+        // jump to the matching ']'
+        unsigned int matched = 0;
+        while (pc < st.st_size) {
+          if (code[pc] == '[') {
+            matched++;
+          } else if (code[pc] == ']') {
+            matched--;
+            if (matched == 0) {
+              break;
+            }
+          }
+          pc++;
+        }
+      } else {
+        push(stack, pc);
+      }
+      break;
+    case ']':
+      if (get_current_data(context) != 0) {
+        pc = peek(stack);
+      } else {
+        pop(stack);
+      }
+      break;
+    default:
+      break;
+    }
+    pc++;
+  }
+  munmap(buffer, st.st_size);
+  close(fd);
+  bf_memory_destroy(context);
+  bf_stack_destroy(stack);
+  return EXIT_SUCCESS;
 }
