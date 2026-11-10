@@ -1,8 +1,7 @@
 #include "bflink.h"
-#include "bfstack.h"
+#include "bfjump.h"
 #include "config.h"
 #include <fcntl.h>
-#include <memory.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -12,41 +11,59 @@
 
 int main(int argc, char *argv[]) {
   if (argc < 2) {
-    fprintf(stderr, "bf version %d.%d Usage: %s <filename>\n", BF_VERSION_MAJOR, BF_VERSION_MINOR, argv[0]);
+    fprintf(stderr, "bf version %d.%d Usage: %s <filename>\n",
+            BF_VERSION_MAJOR, BF_VERSION_MINOR, argv[0]);
     return EXIT_FAILURE;
   }
 
   const char *filename = argv[1];
   int fd = open(filename, O_RDONLY);
+  if (fd < 0) {
+    perror(filename);
+    return EXIT_FAILURE;
+  }
 
-  BFMemoryContext *context = bf_memory_create();
-  if (!context) {
-    fprintf(stderr, "Error: Memory context creation failed\n");
-    close(fd);
-    return EXIT_FAILURE;
-  }
-  BFStackContext *stack = bf_stack_create(1024);
-  if (!stack) {
-    fprintf(stderr, "Error: Stack creation failed\n");
-    bf_memory_destroy(context);
-    close(fd);
-    return EXIT_FAILURE;
-  }
   struct stat st;
-  stat(filename, &st);
-  void *buffer = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  if (fstat(fd, &st) != 0) {
+    perror(filename);
+    close(fd);
+    return EXIT_FAILURE;
+  }
+  if (st.st_size <= 0) {
+    // An empty program is a valid no-op.
+    close(fd);
+    return EXIT_SUCCESS;
+  }
+
+  const size_t code_size = (size_t)st.st_size;
+  void *buffer = mmap(NULL, code_size, PROT_READ, MAP_PRIVATE, fd, 0);
   if (buffer == MAP_FAILED) {
-    fprintf(stderr, "Error: Memory mapping failed\n");
-    bf_memory_destroy(context);
-    bf_stack_destroy(stack);
+    perror("mmap");
     close(fd);
     return EXIT_FAILURE;
   }
   const char *code = (const char *)buffer;
+
+  // Validate brackets and resolve all '[' / ']' pairs up front.
+  BFJumpTable *jumps = bf_jump_build(code, code_size, filename);
+  if (!jumps) {
+    munmap(buffer, code_size);
+    close(fd);
+    return EXIT_FAILURE;
+  }
+
+  BFMemoryContext *context = bf_memory_create();
+  if (!context) {
+    fprintf(stderr, "Error: Memory context creation failed\n");
+    bf_jump_destroy(jumps);
+    munmap(buffer, code_size);
+    close(fd);
+    return EXIT_FAILURE;
+  }
+
   size_t pc = 0;
-  while (pc < st.st_size) {
-    char command = code[pc];
-    switch (command) {
+  while (pc < code_size) {
+    switch (code[pc]) {
     case '>':
       move_next(context);
       break;
@@ -63,32 +80,18 @@ int main(int argc, char *argv[]) {
       putchar(get_current_data(context));
       break;
     case ',':
-      set_current_data(context, getchar());
+      set_current_data(context, (unsigned char)getchar());
       break;
     case '[':
       if (get_current_data(context) == 0) {
-        // jump to the matching ']'
-        unsigned int matched = 0;
-        while (pc < st.st_size) {
-          if (code[pc] == '[') {
-            matched++;
-          } else if (code[pc] == ']') {
-            matched--;
-            if (matched == 0) {
-              break;
-            }
-          }
-          pc++;
-        }
-      } else {
-        push(stack, pc);
+        // Jump to the matching ']'; pc++ below moves past it.
+        pc = jumps->jump[pc];
       }
       break;
     case ']':
       if (get_current_data(context) != 0) {
-        pc = peek(stack);
-      } else {
-        pop(stack);
+        // Jump back to the matching '['; pc++ below re-enters the body.
+        pc = jumps->jump[pc];
       }
       break;
     default:
@@ -96,9 +99,10 @@ int main(int argc, char *argv[]) {
     }
     pc++;
   }
-  munmap(buffer, st.st_size);
+
+  bf_jump_destroy(jumps);
+  munmap(buffer, code_size);
   close(fd);
   bf_memory_destroy(context);
-  bf_stack_destroy(stack);
   return EXIT_SUCCESS;
 }

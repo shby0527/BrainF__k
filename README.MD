@@ -1,5 +1,8 @@
 # about
-this is a brainfuck interpreter
+this is a brainfuck interpreter.
+
+before running a program, all brackets are validated and every
+`[` / `]` pair is resolved once into a precompiled jump table.
 
 # make dependency
 cmake, gcc/clang, make
